@@ -1,0 +1,12 @@
+{application,simple_mcp,
+             [{modules,['Elixir.SimpleMCP','Elixir.SimpleMCP.Application',
+                        'Elixir.SimpleMCP.Plug','Elixir.SimpleMCP.Protocol',
+                        'Elixir.SimpleMCP.Session',
+                        'Elixir.SimpleMCP.TestServer',
+                        'Elixir.SimpleMCP.Tool']},
+              {optional_applications,[]},
+              {applications,[kernel,stdlib,elixir,logger,plug]},
+              {description,"A minimal, dependency-light MCP server library for Elixir"},
+              {registered,[]},
+              {vsn,"0.1.0"},
+              {mod,{'Elixir.SimpleMCP.Application',[]}}]}.
