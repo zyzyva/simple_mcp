@@ -1,4 +1,8 @@
 defmodule SimpleMCP.TestServer do
+  @moduledoc """
+  A minimal SimpleMCP server used as a fixture in the test suite.
+  """
+
   use SimpleMCP
 
   @impl true

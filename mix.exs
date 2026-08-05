@@ -8,10 +8,20 @@ defmodule SimpleMCP.MixProject do
       elixir: "~> 1.18",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
+      aliases: aliases(),
       deps: deps(),
       description: "A minimal, dependency-light MCP server library for Elixir",
-      package: package()
+      package: package(),
+      dialyzer: [
+        plt_local_path: "priv/plts",
+        plt_core_path: "priv/plts",
+        plt_add_apps: [:mix, :ex_unit]
+      ]
     ]
+  end
+
+  def cli do
+    [preferred_envs: [check: :test, "check.all": :test]]
   end
 
   defp elixirc_paths(:test), do: ["lib", "test/support"]
@@ -26,7 +36,9 @@ defmodule SimpleMCP.MixProject do
 
   defp deps do
     [
-      {:plug, "~> 1.18"}
+      {:plug, "~> 1.18"},
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
+      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false}
     ]
   end
 
@@ -34,6 +46,24 @@ defmodule SimpleMCP.MixProject do
     [
       licenses: ["MIT"],
       links: %{}
+    ]
+  end
+
+  defp aliases do
+    [
+      check: [
+        "format --check-formatted",
+        "credo --strict",
+        "compile --warnings-as-errors",
+        "test"
+      ],
+      "check.all": [
+        "format --check-formatted",
+        "credo --strict",
+        "compile --warnings-as-errors",
+        "test",
+        "dialyzer"
+      ]
     ]
   end
 end

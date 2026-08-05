@@ -29,6 +29,7 @@ defmodule SimpleMCP.Tool do
   @doc """
   Creates a new tool definition.
   """
+  @spec new(String.t(), String.t(), map()) :: t()
   def new(name, description, input_schema \\ %{}) do
     %__MODULE__{
       name: name,
@@ -40,6 +41,7 @@ defmodule SimpleMCP.Tool do
   @doc """
   Converts the tool to MCP JSON schema format.
   """
+  @spec to_mcp_format(t()) :: map()
   def to_mcp_format(%__MODULE__{} = tool) do
     %{
       "name" => tool.name,
@@ -49,44 +51,47 @@ defmodule SimpleMCP.Tool do
   end
 
   defp build_json_schema(schema) when is_map(schema) do
-    {properties, required} =
-      Enum.reduce(schema, {%{}, []}, fn {key, value}, {props, req} ->
-        key_str = to_string(key)
-        {requirement, type, opts} = parse_field_def(value)
+    {properties, required} = Enum.reduce(schema, {%{}, []}, &accumulate_property/2)
+    assemble_schema(properties, required)
+  end
 
-        prop = %{
-          "type" => type_to_json_type(type)
-        }
+  defp build_json_schema(_), do: %{"type" => "object", "properties" => %{}}
 
-        prop =
-          case Keyword.get(opts, :description) do
-            nil -> prop
-            desc -> Map.put(prop, "description", desc)
-          end
+  defp accumulate_property({key, value}, {props, req}) do
+    entry = build_property_entry(key, value)
+    combine_property(entry, props, req)
+  end
 
-        new_props = Map.put(props, key_str, prop)
+  defp build_property_entry(key, value) do
+    key_str = to_string(key)
+    {requirement, type, opts} = parse_field_def(value)
+    {key_str, build_property(type, opts), requirement}
+  end
 
-        new_req =
-          case requirement do
-            :required -> [key_str | req]
-            :optional -> req
-          end
+  defp combine_property({key_str, prop, requirement}, props, req) do
+    {Map.put(props, key_str, prop), accumulate_required(requirement, key_str, req)}
+  end
 
-        {new_props, new_req}
-      end)
+  defp build_property(type, opts) do
+    prop = %{"type" => type_to_json_type(type)}
 
-    result = %{
-      "type" => "object",
-      "properties" => properties
-    }
+    case Keyword.get(opts, :description) do
+      nil -> prop
+      desc -> Map.put(prop, "description", desc)
+    end
+  end
+
+  defp accumulate_required(:required, key_str, req), do: [key_str | req]
+  defp accumulate_required(:optional, _key_str, req), do: req
+
+  defp assemble_schema(properties, required) do
+    result = %{"type" => "object", "properties" => properties}
 
     case required do
       [] -> result
       _ -> Map.put(result, "required", Enum.reverse(required))
     end
   end
-
-  defp build_json_schema(_), do: %{"type" => "object", "properties" => %{}}
 
   defp parse_field_def({requirement, type, opts}) when is_list(opts) do
     {requirement, type, opts}

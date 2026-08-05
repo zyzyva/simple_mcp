@@ -9,18 +9,21 @@ defmodule SimpleMCP.PlugTest do
 
   describe "POST /mcp" do
     test "handles initialize request" do
-      body = JSON.encode!(%{
-        "jsonrpc" => "2.0",
-        "method" => "initialize",
-        "params" => %{
-          "protocolVersion" => "2025-03-26",
-          "clientInfo" => %{"name" => "test", "version" => "1.0"}
-        },
-        "id" => 1
-      })
+      body =
+        JSON.encode!(%{
+          "jsonrpc" => "2.0",
+          "method" => "initialize",
+          "params" => %{
+            "protocolVersion" => "2025-03-26",
+            "clientInfo" => %{"name" => "test", "version" => "1.0"}
+          },
+          "id" => 1
+        })
+
+      conn = conn(:post, "/mcp", body)
 
       conn =
-        conn(:post, "/mcp", body)
+        conn
         |> put_req_header("content-type", "application/json")
         |> put_req_header("accept", "application/json, text/event-stream")
         |> MCPPlug.call(@opts)
@@ -33,15 +36,18 @@ defmodule SimpleMCP.PlugTest do
     end
 
     test "returns error without proper Accept header" do
-      body = JSON.encode!(%{
-        "jsonrpc" => "2.0",
-        "method" => "initialize",
-        "params" => %{},
-        "id" => 1
-      })
+      body =
+        JSON.encode!(%{
+          "jsonrpc" => "2.0",
+          "method" => "initialize",
+          "params" => %{},
+          "id" => 1
+        })
+
+      conn = conn(:post, "/mcp", body)
 
       conn =
-        conn(:post, "/mcp", body)
+        conn
         |> put_req_header("content-type", "application/json")
         |> put_req_header("accept", "application/json")
         |> MCPPlug.call(@opts)
@@ -52,15 +58,18 @@ defmodule SimpleMCP.PlugTest do
     test "uses provided session ID" do
       session_id = "test_session_123"
 
-      body = JSON.encode!(%{
-        "jsonrpc" => "2.0",
-        "method" => "initialize",
-        "params" => %{},
-        "id" => 1
-      })
+      body =
+        JSON.encode!(%{
+          "jsonrpc" => "2.0",
+          "method" => "initialize",
+          "params" => %{},
+          "id" => 1
+        })
+
+      conn = conn(:post, "/mcp", body)
 
       conn =
-        conn(:post, "/mcp", body)
+        conn
         |> put_req_header("content-type", "application/json")
         |> put_req_header("accept", "application/json, text/event-stream")
         |> put_req_header("mcp-session-id", session_id)
@@ -72,15 +81,18 @@ defmodule SimpleMCP.PlugTest do
 
     test "handles full workflow" do
       # Initialize
-      init_body = JSON.encode!(%{
-        "jsonrpc" => "2.0",
-        "method" => "initialize",
-        "params" => %{},
-        "id" => 1
-      })
+      init_body =
+        JSON.encode!(%{
+          "jsonrpc" => "2.0",
+          "method" => "initialize",
+          "params" => %{},
+          "id" => 1
+        })
+
+      conn = conn(:post, "/mcp", init_body)
 
       conn =
-        conn(:post, "/mcp", init_body)
+        conn
         |> put_req_header("content-type", "application/json")
         |> put_req_header("accept", "application/json, text/event-stream")
         |> MCPPlug.call(@opts)
@@ -88,18 +100,21 @@ defmodule SimpleMCP.PlugTest do
       [session_id] = get_resp_header(conn, "mcp-session-id")
 
       # Call tool
-      call_body = JSON.encode!(%{
-        "jsonrpc" => "2.0",
-        "method" => "tools/call",
-        "params" => %{
-          "name" => "greet",
-          "arguments" => %{"name" => "MCP"}
-        },
-        "id" => 2
-      })
+      call_body =
+        JSON.encode!(%{
+          "jsonrpc" => "2.0",
+          "method" => "tools/call",
+          "params" => %{
+            "name" => "greet",
+            "arguments" => %{"name" => "MCP"}
+          },
+          "id" => 2
+        })
+
+      conn = conn(:post, "/mcp", call_body)
 
       conn =
-        conn(:post, "/mcp", call_body)
+        conn
         |> put_req_header("content-type", "application/json")
         |> put_req_header("accept", "application/json, text/event-stream")
         |> put_req_header("mcp-session-id", session_id)
@@ -118,7 +133,8 @@ defmodule SimpleMCP.PlugTest do
       SimpleMCP.Session.create(session_id)
 
       conn =
-        conn(:delete, "/mcp")
+        :delete
+        |> conn("/mcp")
         |> put_req_header("mcp-session-id", session_id)
         |> MCPPlug.call(@opts)
 
@@ -127,9 +143,7 @@ defmodule SimpleMCP.PlugTest do
     end
 
     test "returns error without session ID" do
-      conn =
-        conn(:delete, "/mcp")
-        |> MCPPlug.call(@opts)
+      conn = MCPPlug.call(conn(:delete, "/mcp"), @opts)
 
       assert conn.status == 400
     end
