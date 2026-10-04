@@ -11,6 +11,29 @@ defmodule SimpleMCP.Plug do
   Or in a Plug router:
 
       forward "/mcp", to: SimpleMCP.Plug, init_opts: [server: MyApp.MCPServer]
+
+  ## Options (all off by default; with none set, responses are unchanged)
+
+    * `:server` - required, the module implementing `SimpleMCP`.
+    * `:stateless` - when `true`, the server never creates, stores, requires or
+      returns an `Mcp-Session-Id`. `initialize`, `tools/list` and `tools/call` each
+      work on their own, on any machine. GET and DELETE answer 405. A client that
+      sends a session header anyway is served and the header is ignored.
+
+          forward "/mcp", SimpleMCP.Plug, server: MyApp.MCPServer, stateless: true
+
+  ## Caller context
+
+  Before the plug runs, the host app can put the caller on the connection under the
+  assign key `:simple_mcp_context`. A server that defines
+  `handle_tool_call/3` (tool name, arguments, context) receives that value. A server
+  that only defines `handle_tool_call/2` is called exactly as before.
+
+      plug :put_mcp_caller
+
+      def put_mcp_caller(conn, _opts) do
+        assign(conn, :simple_mcp_context, conn.assigns.current_user)
+      end
   """
 
   @behaviour Plug
@@ -18,32 +41,34 @@ defmodule SimpleMCP.Plug do
   import Plug.Conn
   alias SimpleMCP.{Protocol, Session}
 
+  @context_assign :simple_mcp_context
+
   @impl true
   def init(opts) do
     server = Keyword.fetch!(opts, :server)
-    %{server: server}
+    %{server: server, stateless: Keyword.get(opts, :stateless, false)}
   end
 
   @impl true
-  def call(conn, %{server: server}) do
+  def call(conn, config) do
     case conn.method do
-      "POST" -> handle_post(conn, server)
-      "DELETE" -> handle_delete(conn)
+      "POST" -> handle_post(conn, config)
+      "DELETE" -> handle_delete(conn, config)
       _ -> send_error(conn, 405, "Method not allowed")
     end
   end
 
-  defp handle_post(conn, server) do
+  defp handle_post(conn, config) do
     # Check required headers
     if accepts_json_and_sse?(conn) do
-      session_id = get_or_create_session_id(conn)
+      session_id = session_for(conn, config)
 
       # Get body - either from already-parsed body_params or read raw body
       {body, conn} = get_request_body(conn)
 
       case Protocol.parse_request(body) do
         {:ok, message} ->
-          handle_message(conn, message, server, session_id)
+          handle_message(conn, message, config, session_id)
 
         {:error, code, reason} ->
           send_json_rpc_error(conn, nil, code, reason)
@@ -82,23 +107,40 @@ defmodule SimpleMCP.Plug do
     end
   end
 
-  defp handle_message(conn, message, server, session_id) do
-    case Protocol.handle_message(message, server, session_id) do
-      :no_response ->
-        # For notifications, return 202 Accepted
-        conn
-        |> put_resp_header("mcp-session-id", session_id)
-        |> send_resp(202, "")
+  defp session_for(_conn, %{stateless: true}), do: nil
+  defp session_for(conn, _config), do: get_or_create_session_id(conn)
 
-      response ->
-        conn
-        |> put_resp_header("mcp-session-id", session_id)
-        |> put_resp_content_type("application/json")
-        |> send_resp(200, JSON.encode!(response))
-    end
+  defp handle_message(conn, message, %{server: server, stateless: true}, nil) do
+    response =
+      Protocol.handle_message(message, server, nil, stateless: true, context: caller(conn))
+
+    send_message_response(conn, response)
   end
 
-  defp handle_delete(conn) do
+  defp handle_message(conn, message, %{server: server}, session_id) do
+    response = Protocol.handle_message(message, server, session_id, context: caller(conn))
+
+    conn
+    |> put_resp_header("mcp-session-id", session_id)
+    |> send_message_response(response)
+  end
+
+  defp send_message_response(conn, :no_response) do
+    # For notifications, return 202 Accepted
+    send_resp(conn, 202, "")
+  end
+
+  defp send_message_response(conn, response) do
+    conn
+    |> put_resp_content_type("application/json")
+    |> send_resp(200, JSON.encode!(response))
+  end
+
+  defp caller(conn), do: Map.get(conn.assigns, @context_assign)
+
+  defp handle_delete(conn, %{stateless: true}), do: send_error(conn, 405, "Method not allowed")
+
+  defp handle_delete(conn, _config) do
     case get_session_id(conn) do
       nil ->
         send_error(conn, 400, "Missing session ID")

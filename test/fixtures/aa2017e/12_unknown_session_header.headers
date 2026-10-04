@@ -1,0 +1,4 @@
+status: 200
+cache-control: max-age=0, private, must-revalidate
+mcp-session-id: compat-session-unknown
+content-type: application/json; charset=utf-8
