@@ -5,7 +5,7 @@ defmodule SimpleMCP.ToolMetadataTest do
   """
   use ExUnit.Case, async: true
 
-  alias SimpleMCP.{Protocol, Session, Tool}
+  alias SimpleMCP.{MetadataServer, Protocol, Session, Tool}
 
   describe "a tool with a title and annotations" do
     test "emits title and every hint under the MCP field names" do
@@ -98,21 +98,5 @@ defmodule SimpleMCP.ToolMetadataTest do
       refute Map.has_key?(plain, "title")
       refute Map.has_key?(plain, "annotations")
     end
-  end
-end
-
-defmodule MetadataServer do
-  @moduledoc false
-  use SimpleMCP
-
-  @impl true
-  def tools do
-    [
-      SimpleMCP.Tool.new("lookup", "Looks up", %{},
-        title: "Look up a receipt",
-        annotations: [read_only: true]
-      ),
-      SimpleMCP.Tool.new("plain", "Plain", %{})
-    ]
   end
 end
