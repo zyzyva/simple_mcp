@@ -35,9 +35,7 @@ defmodule SimpleMCP.Plug do
 
   defp handle_post(conn, server) do
     # Check required headers
-    unless accepts_json_and_sse?(conn) do
-      send_json_rpc_error(conn, nil, -32600, "Not Acceptable: Client must accept both application/json and text/event-stream", 406)
-    else
+    if accepts_json_and_sse?(conn) do
       session_id = get_or_create_session_id(conn)
 
       # Get body - either from already-parsed body_params or read raw body
@@ -50,6 +48,14 @@ defmodule SimpleMCP.Plug do
         {:error, code, reason} ->
           send_json_rpc_error(conn, nil, code, reason)
       end
+    else
+      send_json_rpc_error(
+        conn,
+        nil,
+        -32_600,
+        "Not Acceptable: Client must accept both application/json and text/event-stream",
+        406
+      )
     end
   end
 
@@ -60,8 +66,11 @@ defmodule SimpleMCP.Plug do
         {:ok, body, conn} = read_body(conn)
         {body, conn}
 
-      # Body was parsed as JSON by Plug.Parsers - use body_params directly
-      is_map(conn.body_params) and map_size(conn.body_params) > 0 ->
+      # Body was parsed as JSON by Plug.Parsers - use body_params directly.
+      # Once past the Unfetched? check above, Plug.Conn.t()'s own spec
+      # guarantees body_params is a map, so no separate is_map/1 guard is
+      # reachable-false here (Dialyzer flagged the redundant check).
+      map_size(conn.body_params) > 0 ->
         {conn.body_params, conn}
 
       # Fallback - try to read raw body
@@ -121,7 +130,7 @@ defmodule SimpleMCP.Plug do
   end
 
   defp accepts_json_and_sse?(conn) do
-    accept = get_req_header(conn, "accept") |> List.first() || ""
+    accept = List.first(get_req_header(conn, "accept")) || ""
     String.contains?(accept, "application/json") and String.contains?(accept, "text/event-stream")
   end
 

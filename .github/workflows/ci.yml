@@ -1,0 +1,99 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+# Cancel superseded runs on the same branch/PR.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    env:
+      MIX_ENV: test
+    # No services: a dependency-light MCP server library, no database, no broker.
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: "1.18.4"
+          otp-version: "28.0.1"
+
+      # Cache deps and _build keyed on the lockfile so CI is fast.
+      - name: Cache deps
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+          key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
+          restore-keys: ${{ runner.os }}-mix-
+
+      - name: Install dependencies
+        run: mix deps.get
+
+      # Gate 1: formatting is deterministic — fail, don't reformat.
+      - name: Check formatting
+        run: mix format --check-formatted
+
+      # Gate 2: enforceable style rules via Credo (strict).
+      - name: Credo
+        run: mix credo --strict
+
+      # Gate 3: tests, including doctests. A fabricated doctest fails here.
+      - name: Compile (warnings as errors)
+        run: mix compile --warnings-as-errors
+
+      - name: Tests
+        run: mix test
+
+  # Dialyzer split into its own job because the PLT build is slow;
+  # cache the PLT so it only rebuilds when deps change.
+  dialyzer:
+    runs-on: ubuntu-latest
+    env:
+      MIX_ENV: dev
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: "1.18.4"
+          otp-version: "28.0.1"
+
+      - name: Cache deps and PLT
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+            priv/plts
+          key: ${{ runner.os }}-dialyzer-${{ hashFiles('**/mix.lock') }}
+          restore-keys: ${{ runner.os }}-dialyzer-
+
+      - name: Install dependencies
+        run: mix deps.get
+
+      # Gate 4: Dialyzer verifies specs are actually correct (Credo only
+      # checks they exist). Slow but catches real bugs.
+      #
+      # Default formatter on purpose — do NOT add --format github. OTP 28's
+      # exact_compare and opaque_compare warning types are unregistered in
+      # dialyxir 1.4.7 (still the latest release), so the github and short
+      # formatters throw `{:error, :unknown_warning, <type>}` out of
+      # Dialyxir.Formatter.Utils.warning/1 and abort the job before it
+      # reports anything. The default formatter catches that throw and
+      # falls back to dialyzer's legacy warning text: the finding is still
+      # printed and the job still exits non-zero. Full mechanism — and why
+      # these two types also cannot be silenced from .dialyzer_ignore.exs —
+      # is in mix_snippets.exs. Revisit when a dialyxir release registers
+      # them.
+      - name: Dialyzer
+        run: mix dialyzer

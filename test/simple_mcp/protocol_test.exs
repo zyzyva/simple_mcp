@@ -19,12 +19,12 @@ defmodule SimpleMCP.ProtocolTest do
     end
 
     test "returns error for invalid JSON" do
-      assert {:error, -32700, "Parse error"} = Protocol.parse_request("not json")
+      assert {:error, -32_700, "Parse error"} = Protocol.parse_request("not json")
     end
 
     test "returns error for missing jsonrpc field" do
       body = ~s({"method": "test", "id": 1})
-      assert {:error, -32600, _} = Protocol.parse_request(body)
+      assert {:error, -32_600, _} = Protocol.parse_request(body)
     end
   end
 

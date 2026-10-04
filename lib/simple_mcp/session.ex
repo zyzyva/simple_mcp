@@ -5,12 +5,17 @@ defmodule SimpleMCP.Session do
   """
 
   @table :simple_mcp_sessions
-  @ttl_ms 30 * 60 * 1000  # 30 minutes
-  @cleanup_interval 60_000  # Check every minute
+  # 30 minutes
+  @ttl_ms 30 * 60 * 1000
+  # Check every minute
+  @cleanup_interval 60_000
+
+  @type t :: map()
 
   @doc """
   Initializes the ETS table. Called by Application.
   """
+  @spec init() :: :ok
   def init do
     :ets.new(@table, [:named_table, :set, :public, read_concurrency: true])
     :ok
@@ -19,6 +24,7 @@ defmodule SimpleMCP.Session do
   @doc """
   Gets or creates a session.
   """
+  @spec get_or_create(String.t()) :: t()
   def get_or_create(session_id) do
     case get(session_id) do
       nil -> create(session_id)
@@ -29,6 +35,7 @@ defmodule SimpleMCP.Session do
   @doc """
   Gets a session by ID.
   """
+  @spec get(String.t()) :: t() | nil
   def get(session_id) do
     case :ets.lookup(@table, session_id) do
       [{^session_id, session, _expires_at}] -> session
@@ -39,6 +46,7 @@ defmodule SimpleMCP.Session do
   @doc """
   Creates a new session.
   """
+  @spec create(String.t()) :: t()
   def create(session_id) do
     session = %{
       initialized: false,
@@ -55,6 +63,7 @@ defmodule SimpleMCP.Session do
   @doc """
   Updates a session with new data.
   """
+  @spec update(String.t(), map()) :: t()
   def update(session_id, attrs) do
     case get(session_id) do
       nil ->
@@ -74,6 +83,7 @@ defmodule SimpleMCP.Session do
   @doc """
   Deletes a session.
   """
+  @spec delete(String.t()) :: :ok
   def delete(session_id) do
     :ets.delete(@table, session_id)
     :ok
@@ -82,6 +92,7 @@ defmodule SimpleMCP.Session do
   @doc """
   Generates a new unique session ID.
   """
+  @spec generate_id() :: String.t()
   def generate_id do
     "session_" <> Base.url_encode64(:crypto.strong_rand_bytes(16), padding: false)
   end
@@ -89,6 +100,7 @@ defmodule SimpleMCP.Session do
   @doc """
   Removes expired sessions. Called periodically.
   """
+  @spec cleanup_expired() :: :ok
   def cleanup_expired do
     now = System.system_time(:millisecond)
 
@@ -97,6 +109,7 @@ defmodule SimpleMCP.Session do
         if expires_at < now do
           :ets.delete(@table, session_id)
         end
+
         acc
       end,
       :ok,
@@ -107,5 +120,6 @@ defmodule SimpleMCP.Session do
   @doc """
   Returns the cleanup interval in milliseconds.
   """
+  @spec cleanup_interval() :: pos_integer()
   def cleanup_interval, do: @cleanup_interval
 end

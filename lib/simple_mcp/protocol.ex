@@ -10,13 +10,16 @@ defmodule SimpleMCP.Protocol do
   @default_version "2025-11-25"
 
   # JSON-RPC 2.0 error codes
-  @parse_error -32700
-  @invalid_request -32600
-  @method_not_found -32601
+  @parse_error -32_700
+  @invalid_request -32_600
+  @method_not_found -32_601
+
+  @type message :: %{id: term(), method: String.t(), params: map()}
 
   @doc """
   Parses and validates a JSON-RPC 2.0 request.
   """
+  @spec parse_request(binary() | map()) :: {:ok, message()} | {:error, integer(), String.t()}
   def parse_request(body) when is_binary(body) do
     case JSON.decode(body) do
       {:ok, message} -> validate_jsonrpc(message)
@@ -30,11 +33,12 @@ defmodule SimpleMCP.Protocol do
   end
 
   defp validate_jsonrpc(%{"jsonrpc" => "2.0", "method" => method} = msg) do
-    {:ok, %{
-      id: Map.get(msg, "id"),
-      method: method,
-      params: Map.get(msg, "params", %{})
-    }}
+    {:ok,
+     %{
+       id: Map.get(msg, "id"),
+       method: method,
+       params: Map.get(msg, "params", %{})
+     }}
   end
 
   defp validate_jsonrpc(_) do
@@ -44,6 +48,7 @@ defmodule SimpleMCP.Protocol do
   @doc """
   Handles an MCP message and returns a response.
   """
+  @spec handle_message(message(), module(), String.t()) :: map() | :no_response
   def handle_message(message, server_module, session_id) do
     case message.method do
       "initialize" ->
@@ -67,19 +72,28 @@ defmodule SimpleMCP.Protocol do
   end
 
   defp handle_initialize(message, server_module, session_id) do
-    {name, version} = server_module.server_info()
+    negotiated_version = negotiate_client_version(message)
+    update_session_on_initialize(session_id, negotiated_version, message)
+    success_response(message.id, initialize_result(server_module, negotiated_version))
+  end
 
-    # Negotiate protocol version with client
+  defp negotiate_client_version(message) do
     client_version = Map.get(message.params, "protocolVersion", @default_version)
-    negotiated_version = negotiate_version(client_version)
+    negotiate_version(client_version)
+  end
 
+  defp update_session_on_initialize(session_id, negotiated_version, message) do
     Session.update(session_id, %{
       initialized: false,
       protocol_version: negotiated_version,
       client_info: Map.get(message.params, "clientInfo")
     })
+  end
 
-    success_response(message.id, %{
+  defp initialize_result(server_module, negotiated_version) do
+    {name, version} = server_module.server_info()
+
+    %{
       "protocolVersion" => negotiated_version,
       "serverInfo" => %{
         "name" => name,
@@ -88,7 +102,7 @@ defmodule SimpleMCP.Protocol do
       "capabilities" => %{
         "tools" => %{}
       }
-    })
+    }
   end
 
   defp negotiate_version(client_version) do
@@ -159,6 +173,7 @@ defmodule SimpleMCP.Protocol do
   @doc """
   Creates a success response.
   """
+  @spec success_response(term(), term()) :: map()
   def success_response(id, result) do
     %{
       "jsonrpc" => "2.0",
@@ -170,6 +185,7 @@ defmodule SimpleMCP.Protocol do
   @doc """
   Creates an error response.
   """
+  @spec error_response(term(), integer(), String.t(), term()) :: map()
   def error_response(id, code, message, data \\ nil) do
     error = %{
       "code" => code,
