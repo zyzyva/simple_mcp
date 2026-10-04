@@ -6,7 +6,7 @@ defmodule SimpleMCP.Protocol do
   alias SimpleMCP.{Session, Tool}
 
   # Supported MCP protocol versions
-  @supported_versions ["2025-11-25", "2025-03-26"]
+  @supported_versions ["2025-11-25", "2025-06-18", "2025-03-26"]
   @default_version "2025-11-25"
 
   # JSON-RPC 2.0 error codes
