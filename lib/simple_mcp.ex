@@ -30,6 +30,8 @@ defmodule SimpleMCP do
       forward "/mcp", SimpleMCP.Plug, server: MyApp.MCPServer
   """
 
+  # `{:ok, {:content, blocks}}` (slice 318) passes the blocks through as the result's
+  # content unchanged; any other `{:ok, value}` is encoded as before.
   @type tool_result :: {:ok, any()} | {:error, String.t()}
 
   @callback server_info() :: {name :: String.t(), version :: String.t()}

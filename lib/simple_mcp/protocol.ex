@@ -210,6 +210,9 @@ defmodule SimpleMCP.Protocol do
     success_response(message.id, %{})
   end
 
+  # A tool that answers with its own content list (slice 318): passed through unchanged.
+  defp format_tool_result({:content, blocks}) when is_list(blocks), do: blocks
+
   defp format_tool_result(result) when is_binary(result) do
     [%{"type" => "text", "text" => result}]
   end
