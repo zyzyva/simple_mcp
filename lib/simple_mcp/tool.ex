@@ -21,20 +21,41 @@ defmodule SimpleMCP.Tool do
   @type t :: %__MODULE__{
           name: String.t(),
           description: String.t(),
-          input_schema: map()
+          input_schema: map(),
+          title: String.t() | nil,
+          annotations: map() | nil
         }
 
-  defstruct [:name, :description, :input_schema]
+  defstruct [:name, :description, :input_schema, :title, :annotations]
+
+  # The four MCP tool hints, keyed by the Elixir name a caller writes.
+  @hint_fields %{
+    read_only: "readOnlyHint",
+    destructive: "destructiveHint",
+    idempotent: "idempotentHint",
+    open_world: "openWorldHint"
+  }
 
   @doc """
   Creates a new tool definition.
+
+  Options (slice 318, both optional):
+
+    * `:title` - a human-readable name, emitted as `title`.
+    * `:annotations` - the MCP hints as a keyword list or map, any of `:read_only`,
+      `:destructive`, `:idempotent`, `:open_world`, each a boolean. Only the hints
+      given are emitted. An empty list counts as not set.
+
+  A tool given neither is emitted exactly as it was before the options existed.
   """
-  @spec new(String.t(), String.t(), map()) :: t()
-  def new(name, description, input_schema \\ %{}) do
+  @spec new(String.t(), String.t(), map(), keyword()) :: t()
+  def new(name, description, input_schema \\ %{}, opts \\ []) do
     %__MODULE__{
       name: name,
       description: description,
-      input_schema: input_schema
+      input_schema: input_schema,
+      title: Keyword.get(opts, :title),
+      annotations: opts |> Keyword.get(:annotations, []) |> hint_fields()
     }
   end
 
@@ -48,6 +69,32 @@ defmodule SimpleMCP.Tool do
       "description" => tool.description,
       "inputSchema" => build_json_schema(tool.input_schema)
     }
+    |> put_when_set("title", tool.title)
+    |> put_when_set("annotations", tool.annotations)
+  end
+
+  defp put_when_set(map, _key, nil), do: map
+  defp put_when_set(map, key, value), do: Map.put(map, key, value)
+
+  defp hint_fields(annotations) do
+    annotations
+    |> Map.new(&hint_field/1)
+    |> present_hints()
+  end
+
+  defp present_hints(hints) when map_size(hints) == 0, do: nil
+  defp present_hints(hints), do: hints
+
+  defp hint_field({name, value}) when is_map_key(@hint_fields, name) and is_boolean(value) do
+    {Map.fetch!(@hint_fields, name), value}
+  end
+
+  defp hint_field({name, value}) when is_map_key(@hint_fields, name) do
+    raise ArgumentError, "annotation #{inspect(name)} must be a boolean, got: #{inspect(value)}"
+  end
+
+  defp hint_field({name, _value}) do
+    raise ArgumentError, "unknown annotation #{inspect(name)}"
   end
 
   defp build_json_schema(schema) when is_map(schema) do
