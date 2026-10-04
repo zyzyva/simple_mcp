@@ -36,6 +36,16 @@ defmodule SimpleMCP do
   @callback tools() :: [SimpleMCP.Tool.t()]
   @callback handle_tool_call(tool_name :: String.t(), arguments :: map()) :: tool_result()
 
+  # Optional (slice 318): a server that defines it receives the caller's context, the
+  # value the host app put on the connection under `:simple_mcp_context`.
+  @callback handle_tool_call(
+              tool_name :: String.t(),
+              arguments :: map(),
+              context :: term()
+            ) :: tool_result()
+
+  @optional_callbacks handle_tool_call: 3
+
   defmacro __using__(_opts) do
     quote do
       @behaviour SimpleMCP
