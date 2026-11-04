@@ -127,3 +127,37 @@ defmodule SimpleMCP.RaisingPromptsServer do
   @impl true
   def get_prompt(_name, _arguments, _context), do: {:ok, []}
 end
+
+defmodule SimpleMCP.ReadmeServer do
+  @moduledoc """
+  The README's instructions and prompts examples, verbatim, so the documentation cannot drift from
+  what the library does (see `SimpleMCP.PromptsTest`).
+  """
+
+  use SimpleMCP
+
+  @impl true
+  def instructions do
+    "Ask the person before changing anything. Keep answers short."
+  end
+
+  @impl true
+  def prompts do
+    [
+      SimpleMCP.Prompt.new("review_flagged",
+        title: "Review my flagged receipts",
+        description: "Go through the receipts that need a second look",
+        arguments: [
+          month: {:optional, description: "Which month, like 2026-09"}
+        ]
+      )
+    ]
+  end
+
+  @impl true
+  def get_prompt("review_flagged", arguments, user) do
+    month = Map.get(arguments, "month", "this month")
+
+    {:ok, [%{role: :user, content: "Review #{user.email}'s flagged receipts from #{month}."}]}
+  end
+end

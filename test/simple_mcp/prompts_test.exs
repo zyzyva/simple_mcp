@@ -305,6 +305,45 @@ defmodule SimpleMCP.PromptsTest do
     end
   end
 
+  describe "the README's examples" do
+    test "work as the README says" do
+      server = SimpleMCP.ReadmeServer
+
+      init =
+        Protocol.handle_message(%{id: 1, method: "initialize", params: %{}}, server, nil,
+          stateless: true
+        )
+
+      assert init["result"]["instructions"] =~ "Ask the person before changing anything"
+      assert init["result"]["capabilities"]["prompts"] == %{}
+
+      list = call("prompts/list", %{}, [], server)
+
+      assert [
+               %{
+                 "name" => "review_flagged",
+                 "arguments" => [%{"name" => "month", "required" => false}]
+               }
+             ] =
+               list["result"]["prompts"]
+
+      rendered =
+        call(
+          "prompts/get",
+          %{"name" => "review_flagged", "arguments" => %{"month" => "2026-09"}},
+          [context: %{email: "a@example.com"}],
+          server
+        )
+
+      assert [
+               %{
+                 "content" => %{"text" => "Review a@example.com's flagged receipts from 2026-09."}
+               }
+             ] =
+               rendered["result"]["messages"]
+    end
+  end
+
   describe "sessions, the same rule as tools/list" do
     test "in the default mode an unknown session is 'Server not initialized' for both methods" do
       for {method, params} <- [{"prompts/list", %{}}, {"prompts/get", %{"name" => "plain"}}] do

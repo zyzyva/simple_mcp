@@ -78,6 +78,91 @@ A tool can return its own content list, which is passed through unchanged:
 
 Binary, map and list returns are encoded exactly as before.
 
+### Standing instructions
+
+A server can give the assistant standing instructions, sent once when the connection starts.
+Define `instructions/0`:
+
+    @impl true
+    def instructions do
+      "Ask the person before changing anything. Keep answers short."
+    end
+
+The `initialize` result then carries it as `instructions`. A server that does not define
+`instructions/0` (or returns `nil`) has no `instructions` key at all. Something that is not a
+string is a server bug: it is left out, logged, and the handshake still succeeds.
+
+### Prompts
+
+A server can offer prompts: named, ready-made requests a person picks from the assistant's
+interface. Define `prompts/0` to list them and `get_prompt/3` to render one:
+
+    @impl true
+    def prompts do
+      [
+        SimpleMCP.Prompt.new("review_flagged",
+          title: "Review my flagged receipts",
+          description: "Go through the receipts that need a second look",
+          arguments: [
+            month: {:optional, description: "Which month, like 2026-09"}
+          ]
+        )
+      ]
+    end
+
+    @impl true
+    def get_prompt("review_flagged", arguments, user) do
+      month = Map.get(arguments, "month", "this month")
+
+      {:ok,
+       [%{role: :user, content: "Review #{user.email}'s flagged receipts from #{month}."}]}
+    end
+
+`get_prompt/3` receives the prompt's name, the arguments the client sent (a map of strings)
+and the caller's context, the same value `handle_tool_call/3` receives (the
+`:simple_mcp_context` assign, see above), so a prompt can be tailored to the connected person.
+It returns:
+
+  * `{:ok, messages}`, or `{:ok, %{description: "...", messages: messages}}`. A message is
+    `%{role: :user | :assistant, content: content}`, where `content` is a string (sent as a
+    text block) or an MCP content block map (`%{type: "image", data: ..., mimeType: ...}`, a
+    resource, and so on), sent as given. Atom or string keys both work.
+  * `{:error, "text"}`, which the client receives as a JSON-RPC internal error carrying that
+    text.
+
+A server that defines `prompts/0` advertises the `prompts` capability in `initialize` (without
+`listChanged`) and answers `prompts/list` and `prompts/get`, following the same session rule as
+`tools/list`. A server that does not define it advertises nothing, and answers both methods
+with method-not-found, exactly as before.
+
+A missing required argument, an unknown prompt, arguments that are not an object, an `{:error, _}`,
+a result that is not valid, and any raise, exit or throw in your callback are all proper
+JSON-RPC errors (`-32602` invalid params, `-32603` internal error), never a crash and never an
+HTTP 500. The detail of a raise is logged and is not sent to the client.
+
+`SimpleMCP.Prompt.new/2` raises `ArgumentError` for a definition it cannot emit (a bad
+argument shape, an unknown option), when the prompt is built.
+
+### Which MCP revision each field comes from
+
+Everything in this section follows the MCP specification revision **2025-06-18**, which this
+library negotiates:
+
+| Field | Where it comes from in 2025-06-18 |
+| --- | --- |
+| `instructions` in the `initialize` result | Base protocol, lifecycle: `InitializeResult.instructions` |
+| `capabilities.prompts` (an empty object here) | Base protocol, lifecycle: `ServerCapabilities.prompts`; server/prompts: Capabilities |
+| `prompts/list` and its `prompts` result | Server features, prompts: Listing Prompts |
+| `Prompt`: `name`, `title`, `description`, `arguments` | Server features, prompts: Data Types, Prompt |
+| `PromptArgument`: `name`, `description`, `required` | Server features, prompts: Listing Prompts |
+| `prompts/get`, `name`, `arguments`, and the `description` and `messages` result | Server features, prompts: Getting a Prompt |
+| `PromptMessage`: `role` (`user` or `assistant`) and `content` (text, image, audio, embedded resource) | Server features, prompts: Data Types, PromptMessage |
+| Error codes `-32602` (invalid prompt name, missing required argument) and `-32603` (internal) | Server features, prompts: Error Handling |
+
+Not included: `listChanged` and the `notifications/prompts/list_changed` notification,
+pagination (`prompts/list` always returns the whole list and never a `nextCursor`; a `cursor`
+from the client is ignored), argument completion, resources and sampling.
+
 ## Protocol versions
 
 Negotiation accepts `2025-11-25` (the default), `2025-06-18` and `2025-03-26`. An unknown
@@ -93,3 +178,10 @@ version falls back to the default.
 
 `test/fixtures/aa2017e/` holds byte captures of the responses at commit aa2017e, and
 `SimpleMCP.CompatFixtureTest` asserts that the default-option responses still match them.
+
+`test/fixtures/52e7f0c/` holds byte captures from commit 52e7f0c, taken before instructions and
+prompts existed, of a server that defines neither (`SimpleMCP.CompatServer`) answering
+`initialize`, `tools/list`, `prompts/list` and `prompts/get`, in the default session mode, in
+stateless mode and with a caller context. `SimpleMCP.CompatMasterTest` asserts that every byte
+still matches, so a server that upgrades without defining the new callbacks answers exactly as
+it did.
