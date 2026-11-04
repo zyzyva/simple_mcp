@@ -46,7 +46,12 @@ defmodule SimpleMCP do
               context :: term()
             ) :: tool_result()
 
-  @optional_callbacks handle_tool_call: 3
+  # Optional (slice 424): standing instructions for the assistant, carried in the `initialize`
+  # result as `instructions` (MCP 2025-06-18). Not defaulted by `use SimpleMCP`: a server that
+  # does not define it has no `instructions` key at all.
+  @callback instructions() :: String.t() | nil
+
+  @optional_callbacks handle_tool_call: 3, instructions: 0
 
   defmacro __using__(_opts) do
     quote do

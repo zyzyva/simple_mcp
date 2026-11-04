@@ -3,6 +3,8 @@ defmodule SimpleMCP.Protocol do
   Handles JSON-RPC 2.0 message parsing and MCP protocol logic.
   """
 
+  require Logger
+
   alias SimpleMCP.{Session, Tool}
 
   # Supported MCP protocol versions
@@ -117,7 +119,7 @@ defmodule SimpleMCP.Protocol do
   defp initialize_result(server_module, negotiated_version) do
     {name, version} = server_module.server_info()
 
-    %{
+    result = %{
       "protocolVersion" => negotiated_version,
       "serverInfo" => %{
         "name" => name,
@@ -127,6 +129,40 @@ defmodule SimpleMCP.Protocol do
         "tools" => %{}
       }
     }
+
+    put_instructions(result, server_module)
+  end
+
+  # Slice 424: a server that defines `instructions/0` has its string carried as `instructions`.
+  # One that does not, or has nothing to say (nil), has no such key, so its answer is byte for
+  # byte what it was. A value that is not a string is a server bug that must not take the
+  # handshake down: it is left out, and logged.
+  defp put_instructions(result, server_module) do
+    case server_instructions(server_module) do
+      text when is_binary(text) -> Map.put(result, "instructions", text)
+      nil -> result
+      other -> drop_instructions(result, server_module, other)
+    end
+  end
+
+  defp server_instructions(server_module) do
+    case optional_callback?(server_module, :instructions, 0) do
+      true -> server_module.instructions()
+      false -> nil
+    end
+  end
+
+  defp drop_instructions(result, server_module, other) do
+    Logger.warning(
+      "#{inspect(server_module)}.instructions/0 must return a string or nil, got: " <>
+        "#{inspect(other)}. Leaving instructions out of the initialize result."
+    )
+
+    result
+  end
+
+  defp optional_callback?(server_module, name, arity) do
+    Code.ensure_loaded?(server_module) and function_exported?(server_module, name, arity)
   end
 
   defp negotiate_version(client_version) do
