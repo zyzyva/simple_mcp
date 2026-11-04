@@ -51,7 +51,27 @@ defmodule SimpleMCP do
   # does not define it has no `instructions` key at all.
   @callback instructions() :: String.t() | nil
 
-  @optional_callbacks handle_tool_call: 3, instructions: 0
+  # Optional (slice 424): prompts (MCP 2025-06-18). A server that defines `prompts/0` advertises
+  # the `prompts` capability and answers `prompts/list`; `get_prompt/3` renders one by name with
+  # the arguments the client sent and the caller's context (the same value `handle_tool_call/3`
+  # receives). A server that defines neither is answered exactly as before: no capability, and
+  # method-not-found for both methods.
+  @type prompt_message :: %{
+          required(:role) => :user | :assistant | String.t(),
+          required(:content) => String.t() | map()
+        }
+
+  @type prompt_result ::
+          {:ok, [prompt_message()]}
+          | {:ok,
+             %{required(:messages) => [prompt_message()], optional(:description) => String.t()}}
+          | {:error, String.t()}
+
+  @callback prompts() :: [SimpleMCP.Prompt.t()]
+  @callback get_prompt(name :: String.t(), arguments :: map(), context :: term()) ::
+              prompt_result()
+
+  @optional_callbacks handle_tool_call: 3, instructions: 0, prompts: 0, get_prompt: 3
 
   defmacro __using__(_opts) do
     quote do

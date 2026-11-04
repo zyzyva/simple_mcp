@@ -5,7 +5,7 @@ defmodule SimpleMCP.Protocol do
 
   require Logger
 
-  alias SimpleMCP.{Session, Tool}
+  alias SimpleMCP.{Prompts, Session, Tool}
 
   # Supported MCP protocol versions
   @supported_versions ["2025-11-25", "2025-06-18", "2025-03-26"]
@@ -82,13 +82,45 @@ defmodule SimpleMCP.Protocol do
       "tools/call" ->
         handle_tools_call(message, server_module, session_id, request)
 
+      "prompts/list" ->
+        handle_prompts(message, server_module, session_id, request, fn ->
+          Prompts.list(server_module)
+        end)
+
+      "prompts/get" ->
+        handle_prompts(message, server_module, session_id, request, fn ->
+          Prompts.get(server_module, message.params, request.context)
+        end)
+
       "ping" ->
         handle_ping(message)
 
       _ ->
-        error_response(message.id, @method_not_found, "Method not found: #{message.method}")
+        method_not_found(message)
     end
   end
+
+  defp method_not_found(message) do
+    error_response(message.id, @method_not_found, "Method not found: #{message.method}")
+  end
+
+  # Slice 424: a server with no `prompts/0` answers both prompts methods exactly as it answers any
+  # method it does not know. One that has prompts follows the same session rule as `tools/list`.
+  defp handle_prompts(message, server_module, session_id, request, answer) do
+    case {Prompts.offered?(server_module), session_known?(session_id, request)} do
+      {false, _known} ->
+        method_not_found(message)
+
+      {true, false} ->
+        error_response(message.id, @invalid_request, "Server not initialized")
+
+      {true, true} ->
+        prompts_response(message.id, answer.())
+    end
+  end
+
+  defp prompts_response(id, {:ok, result}), do: success_response(id, result)
+  defp prompts_response(id, {:error, code, message}), do: error_response(id, code, message)
 
   defp handle_initialize(message, server_module, session_id, request) do
     negotiated_version = negotiate_client_version(message)
@@ -125,12 +157,19 @@ defmodule SimpleMCP.Protocol do
         "name" => name,
         "version" => version
       },
-      "capabilities" => %{
-        "tools" => %{}
-      }
+      "capabilities" => put_prompts_capability(%{"tools" => %{}}, server_module)
     }
 
     put_instructions(result, server_module)
+  end
+
+  # Slice 424: a server that defines `prompts/0` advertises the prompts capability (no
+  # `listChanged`: list-changed notifications are not part of this library).
+  defp put_prompts_capability(capabilities, server_module) do
+    case Prompts.offered?(server_module) do
+      true -> Map.put(capabilities, "prompts", %{})
+      false -> capabilities
+    end
   end
 
   # Slice 424: a server that defines `instructions/0` has its string carried as `instructions`.
