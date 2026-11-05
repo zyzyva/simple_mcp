@@ -65,6 +65,11 @@ defmodule SimpleMCP.InstructionsTest do
     end
 
     test "defines no instructions/0 (the default is not a function the library adds)" do
+      # function_exported?/3 is false for a module that is not loaded yet, so without loading both
+      # first the refute passes vacuously and the assert fails, depending on the test order.
+      Code.ensure_loaded!(SimpleMCP.CompatServer)
+      Code.ensure_loaded!(SimpleMCP.InstructionsServer)
+
       refute function_exported?(SimpleMCP.CompatServer, :instructions, 0)
       assert function_exported?(SimpleMCP.InstructionsServer, :instructions, 0)
     end
